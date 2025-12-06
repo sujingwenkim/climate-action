@@ -1,0 +1,119 @@
+---
+title: "Public Opinion and Climate Action: Insights from U.S. Survey Data (2010-2024)"
+author: Sujin Kim
+output: 
+  flexdashboard::flex_dashboard:
+  orientation: columns
+  vertical_layout: fill
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(forcats)
+library(hrbrthemes)
+library(shiny)
+library(tidyverse)
+library(viridis)
+
+# Load data
+ycom <- read_csv("ycom_wide.csv")
+
+ycom_clean <- ycom %>%
+  select(where(~ all(!is.na(.)))) %>%
+  select(-c("geo_id", "geo_type", "country"))
+  
+ycom_long <- ycom_clean %>%
+  pivot_longer(
+    cols = -c(state, year),
+    names_to = "variable",
+    values_to = "value"
+  )
+```
+
+Input{.sidebar}
+----------------------------------------------------------------
+### Filter Options
+
+```{r}
+
+# Select year
+
+sliderInput(
+  inputId = "selected_year",
+  label = "Select Year",
+  min = 2010,
+  max = 2024,
+  value = 2024,
+  step = 1,
+  sep = ""
+)
+
+# Select variables
+
+selectInput(
+  inputId = "selected_vars",
+  label = "Select Variables",
+  choices = unique(ycom_long$variable),
+  selected = c("congress", "consensus", "discuss", "exp", "fundrenewables", "regulate", "happening", "worried", "personal"),
+  multiple = TRUE
+)
+
+# Text
+
+helpText(tags$small(
+  "Note: The heatmap automatically reorders states and climate variables based on the selected year and variables. States on the horizontal axis are arranged from lower to higher average estimated percentages, while variables on the vertical axis are ordered the same way from bottom to top."
+  ))
+
+```
+
+Column
+----------------------------------------------------------------
+
+### Climate Concern and Policy Support across U.S. States
+
+```{r}
+
+# Server logic
+renderPlot({
+  
+  # Initial settings
+  if (is.null(input$selected_vars)) {
+    updateSelectInput(session, "selected_vars", choices = unique(ycom_long$variable),
+                      selected = unique(ycom_long$variable)[1:5])
+  }
+  
+  # filter data
+  
+  ycom_filtered <- ycom_long %>%
+    filter(year == input$selected_year, variable %in% input$selected_vars) %>%
+    group_by(state) %>%
+    mutate(mean_state = mean(value)) %>%
+    ungroup() %>%
+    group_by(variable) %>%
+    mutate(mean_variable = mean(value)) %>%
+    ungroup() %>%
+    mutate(
+      state = fct_reorder(state, mean_state),
+      variable = fct_reorder(variable, mean_variable)
+    )
+
+  
+# Heatmap
+ggplot(ycom_filtered, aes(x = variable, y = state, fill = value)) +
+  geom_tile(color = "white", size = 0.6) +
+  scale_fill_viridis(option = "B", discrete = FALSE) +
+  coord_flip() +
+  theme_ipsum(base_size = 8) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    legend.position = "bottom"
+  ) +
+  labs(fill = "Estimated percentage (%)")
+
+})
+
+```
